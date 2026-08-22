@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Hawa - Input Penjualan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ====== INPUT PENJUALAN ======
+        let itemCount = 0;
+        const itemsContainer = document.getElementById('items-container');
+
+        function addItemRow() {
+            itemCount++;
+            const div = document.createElement('div');
+            div.className = 'item-row bg-amber-50 rounded-lg p-3 border border-dashed border-amber-300';
+            div.dataset.index = itemCount;
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-bold text-amber-800">Item #${itemCount}</span>
+                    ${itemCount > 1 ? `<button type="button" onclick="this.closest('.item-row').remove(); hitungTotalPenjualan()" class="text-red-500 text-xs hover:text-red-700"><i class="fas fa-trash"></i> Hapus</button>` : ''}
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <input type="text" placeholder="Nama Item" class="item-nama w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none" required>
+                    <input type="number" placeholder="Qty" class="item-qty w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none" min="1" value="1" oninput="hitungTotalPenjualan()" required>
+                    <input type="number" placeholder="Harga Jual (Rp)" class="item-harga w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none" min="0" oninput="hitungTotalPenjualan()" required>
+                    <input type="number" placeholder="Modal/pcs (Rp)" class="item-modal w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none" min="0" oninput="hitungTotalPenjualan()" required>
+                </div>
+            `;
+            itemsContainer.appendChild(div);
+        }
+
+        window.addItemRow = addItemRow;
+        window.hitungTotalPenjualan = function() {
+            let totalJual = 0, totalModal = 0;
+            document.querySelectorAll('.item-row').forEach(row => {
+                const qty = parseInt(row.querySelector('.item-qty').value) || 0;
+                const harga = parseInt(row.querySelector('.item-harga').value) || 0;
+                const modal = parseInt(row.querySelector('.item-modal').value) || 0;
+                totalJual += qty * harga;
+                totalModal += qty * modal;
+            });
+            document.getElementById('preview-penjualan').textContent = 'Rp ' + totalJual.toLocaleString('id-ID');
+            document.getElementById('preview-modal').textContent = 'Rp ' + totalModal.toLocaleString('id-ID');
+            document.getElementById('preview-untung').textContent = 'Rp ' + (totalJual - totalModal).toLocaleString('id-ID');
+            return { totalJual, totalModal };
+        };
+
+        document.getElementById('btn-tambah-item').addEventListener('click', addItemRow);
+
+        document.getElementById('form-penjualan').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+            const items = [];
+            document.querySelectorAll('.item-row').forEach(row => {
+                items.push({
+                    nama: row.querySelector('.item-nama').value,
+                    qty: parseInt(row.querySelector('.item-qty').value) || 0,
+                    hargaJual: parseInt(row.querySelector('.item-harga').value) || 0,
+                    modalPerPcs: parseInt(row.querySelector('.item-modal').value) || 0
+                });
+            });
+
+            const { totalJual, totalModal } = hitungTotalPenjualan();
+
+            try {
+                await addDoc(collection(db, 'transaksi'), {
+                    cabang: document.getElementById('pj-cabang').value,
+                    tanggal: document.getElementById('pj-tanggal').value,
+                    items: items,
+                    totalPenjualan: totalJual,
+                    totalModal: totalModal,
+                    untungBersih: totalJual - totalModal,
+                    createdAt: serverTimestamp()
+                });
+                alert('✅ Transaksi berhasil disimpan!');
+                e.target.reset();
+                itemsContainer.innerHTML = '';
+                itemCount = 0;
+                addItemRow();
+                hitungTotalPenjualan();
+            } catch (err) {
+                alert('❌ Gagal menyimpan: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '💾 Simpan Transaksi';
+            }
+        });
+
+        // ====== INPUT MODAL ======
+        document.getElementById('form-modal').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+            try {
+                await addDoc(collection(db, 'modal'), {
+                    cabang: document.getElementById('md-cabang').value,
+                    tanggal: document.getElementById('md-tanggal').value,
+                    jenis: document.getElementById('md-jenis').value,
+                    jumlah: parseInt(document.getElementById('md-jumlah').value) || 0,
+                    keterangan: document.getElementById('md-keterangan').value,
+                    createdAt: serverTimestamp()
+                });
+                alert('✅ Modal/pengeluaran berhasil disimpan!');
+                e.target.reset();
+            } catch (err) {
+                alert('❌ Gagal menyimpan: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '💾 Simpan Modal';
+            }
+        });
+
+        // Init
+        addItemRow();
+        document.getElementById('pj-tanggal').valueAsDate = new Date();
+        document.getElementById('md-tanggal').valueAsDate = new Date();
+    </script>
+</head>
+<body class="bg-amber-50 min-h-screen">
+    <nav class="bg-amber-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-coffee text-2xl text-amber-300"></i>
+                <div>
+                    <h1 class="text-xl font-bold">Coffee Hawa</h1>
+                    <p class="text-xs text-amber-200">Sistem Penjualan Gerobak</p>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <a href="index.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-chart-line mr-1"></i> Dashboard</a>
+                <a href="penjualan.html" class="px-4 py-2 bg-amber-800 rounded-lg text-sm hover:bg-amber-700 transition"><i class="fas fa-cash-register mr-1"></i> Penjualan</a>
+                <a href="report.html" class="px-4 py-2 hover:bg-amber-800 rounded-lg text-sm transition"><i class="fas fa-file-alt mr-1"></i> Report</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold text-amber-900">Input Penjualan & Modal</h2>
+            <p class="text-gray-600 text-sm">Catat transaksi harian dan pengeluaran/modal per cabang</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- FORM PENJUALAN -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2">
+                    <i class="fas fa-shopping-cart text-amber-600"></i> Transaksi Penjualan
+                </h3>
+                <form id="form-penjualan" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                            <select id="pj-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                                <option value="Cabang 1">Cabang 1</option>
+                                <option value="Cabang 2">Cabang 2</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                            <input type="date" id="pj-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        </div>
+                    </div>
+
+                    <div id="items-container" class="space-y-3"></div>
+
+                    <button type="button" id="btn-tambah-item" class="w-full py-2 border-2 border-dashed border-amber-400 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-50 transition">
+                        <i class="fas fa-plus"></i> Tambah Item
+                    </button>
+
+                    <div class="bg-gray-50 rounded-lg p-4 space-y-2 border border-gray-100">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-500">Total Penjualan</span>
+                            <span class="font-bold" id="preview-penjualan">Rp 0</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-500">Total Modal</span>
+                            <span class="font-bold text-red-500" id="preview-modal">Rp 0</span>
+                        </div>
+                        <div class="border-t pt-2 flex justify-between text-sm font-bold text-green-600">
+                            <span>Untung Bersih</span>
+                            <span id="preview-untung">Rp 0</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-lg font-bold hover:from-amber-700 hover:to-amber-800 transition shadow-md">
+                        <i class="fas fa-save mr-1"></i> Simpan Transaksi
+                    </button>
+                </form>
+            </div>
+
+            <!-- FORM MODAL -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h3 class="font-bold text-amber-900 mb-4 flex items-center gap-2">
+                    <i class="fas fa-box text-red-500"></i> Input Modal / Pengeluaran
+                </h3>
+                <form id="form-modal" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Cabang</label>
+                            <select id="md-cabang" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                                <option value="Cabang 1">Cabang 1</option>
+                                <option value="Cabang 2">Cabang 2</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal</label>
+                            <input type="date" id="md-tanggal" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Modal / Pengeluaran</label>
+                        <select id="md-jenis" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                            <option value="Modal Awal Hari">Modal Awal Hari</option>
+                            <option value="Bahan Baku - Kopi">Bahan Baku - Kopi</option>
+                            <option value="Bahan Baku - Susu">Bahan Baku - Susu</option>
+                            <option value="Bahan Baku - Gula">Bahan Baku - Gula</option>
+                            <option value="Gas Elpiji">Gas Elpiji</option>
+                            <option value="Plastik Cup">Plastik Cup</option>
+                            <option value="Sedotan">Sedotan</option>
+                            <option value="Lainnya">Lainnya</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah (Rp)</label>
+                        <input type="number" id="md-jumlah" placeholder="0" min="0" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Keterangan</label>
+                        <textarea id="md-keterangan" rows="3" placeholder="Keterangan tambahan..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 resize-y"></textarea>
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-bold hover:from-red-700 hover:to-red-800 transition shadow-md">
+                        <i class="fas fa-save mr-1"></i> Simpan Modal
+                    </button>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
