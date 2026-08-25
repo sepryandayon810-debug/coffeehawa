@@ -8,7 +8,7 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, getDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDca4zoxRK5JycPl63_VEA9vG-99VpUnN4",
@@ -19,7 +19,7 @@ const firebaseConfig = {
   appId: "1:903901425363:web:7c54563ca484bf320aee26",
   measurementId: "G-8DC5BH6LNL"
 };
-    
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -32,36 +32,59 @@ const fmtDate = t => {
     return "-";
 };
 
-let allTransaksi = [], allModal = [], allProduk = [], cabangs = [];
+let allTransaksi = [], allModal = [], allStokHarian = [], cabangs = [];
 let currentTab = "penjualan";
 
-function getFiltered(){
+function getFilteredTransaksi(){
     const cabang = $("filter-cabang").value;
     const dari = $("filter-dari").value;
     const sampai = $("filter-sampai").value;
     const dariDate = dari ? new Date(dari) : null;
     const sampaiDate = sampai ? new Date(sampai) : null;
     if(sampaiDate) sampaiDate.setHours(23,59,59);
-
-    const ft = allTransaksi.filter(t => {
+    return allTransaksi.filter(t => {
         if(cabang !== "all" && t.cabang !== cabang) return false;
         const td = t.tanggal ? new Date(t.tanggal) : null;
         if(dariDate && td < dariDate) return false;
         if(sampaiDate && td > sampaiDate) return false;
         return true;
     });
-    const fm = allModal.filter(m => {
+}
+
+function getFilteredModal(){
+    const cabang = $("filter-cabang").value;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    const dariDate = dari ? new Date(dari) : null;
+    const sampaiDate = sampai ? new Date(sampai) : null;
+    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return allModal.filter(m => {
         if(cabang !== "all" && m.cabang !== cabang) return false;
         const md = m.tanggal ? new Date(m.tanggal) : null;
         if(dariDate && md < dariDate) return false;
         if(sampaiDate && md > sampaiDate) return false;
         return true;
     });
-    return { ft, fm };
+}
+
+function getFilteredStok(){
+    const cabang = $("filter-cabang").value;
+    const dari = $("filter-dari").value;
+    const sampai = $("filter-sampai").value;
+    const dariDate = dari ? new Date(dari) : null;
+    const sampaiDate = sampai ? new Date(sampai) : null;
+    if(sampaiDate) sampaiDate.setHours(23,59,59);
+    return allStokHarian.filter(s => {
+        if(cabang !== "all" && s.cabang !== cabang) return false;
+        const sd = s.tanggal ? new Date(s.tanggal) : null;
+        if(dariDate && sd < dariDate) return false;
+        if(sampaiDate && sd > sampaiDate) return false;
+        return true;
+    }).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
 }
 
 function renderPenjualan(){
-    const { ft } = getFiltered();
+    const ft = getFilteredTransaksi();
     const tbody = $("tbody-penjualan");
     const tfoot = $("tfoot-penjualan");
     if(!ft.length){ tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-400">Tidak ada data transaksi</td></tr>`; tfoot.innerHTML=""; return; }
@@ -92,8 +115,39 @@ function renderPenjualan(){
     </tr>`;
 }
 
+function renderStokHarian(){
+    const fs = getFilteredStok();
+    const tbody = $("tbody-stok");
+    const tfoot = $("tfoot-stok");
+    if(!fs.length){ tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">Tidak ada data stok harian</td></tr>`; tfoot.innerHTML=""; return; }
+    let totAwal=0, totJual=0, totSisa=0, totTidakLaku=0;
+    tbody.innerHTML = fs.map(s => {
+        totAwal += s.stokAwal||0; totJual += s.terjual||0; totSisa += s.sisa||0;
+        const tidakLaku = (s.sisa||0) > 0 ? (s.sisa||0) : 0;
+        totTidakLaku += tidakLaku;
+        const badge = s.cabang === (cabangs[0]?.nama||"") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        const sisaClass = (s.sisa||0) <= 3 ? "text-red-600 font-bold" : "text-gray-700";
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm">${fmtDate(s.tanggal)}</td>
+            <td class="px-4 py-3"><span class="${badge} text-xs px-2 py-0.5 rounded-full font-semibold">${s.cabang}</span></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-800">${s.nama}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-gray-700">${s.stokAwal||0}</td>
+            <td class="px-4 py-3 text-sm text-center font-semibold text-green-600">${s.terjual||0}</td>
+            <td class="px-4 py-3 text-sm text-center font-bold ${sisaClass}">${s.sisa||0}</td>
+            <td class="px-4 py-3 text-sm text-center text-gray-500">${tidakLaku}</td>
+        </tr>`;
+    }).join("");
+    tfoot.innerHTML = `<tr class="bg-amber-50 font-bold text-amber-900">
+        <td colspan="3" class="px-4 py-3 text-right">TOTAL</td>
+        <td class="px-4 py-3 text-center">${totAwal}</td>
+        <td class="px-4 py-3 text-center text-green-700">${totJual}</td>
+        <td class="px-4 py-3 text-center">${totSisa}</td>
+        <td class="px-4 py-3 text-center text-gray-600">${totTidakLaku}</td>
+    </tr>`;
+}
+
 function renderModal(){
-    const { fm } = getFiltered();
+    const fm = getFilteredModal();
     const tbody = $("tbody-modal");
     const tfoot = $("tfoot-modal");
     if(!fm.length){ tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">Tidak ada data modal/pengeluaran</td></tr>`; tfoot.innerHTML=""; return; }
@@ -120,32 +174,43 @@ function renderModal(){
 }
 
 function render(){
+    $("table-penjualan").classList.add("hidden");
+    $("table-stok").classList.add("hidden");
+    $("table-modal").classList.add("hidden");
+    $("tab-btn-penjualan").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    $("tab-btn-stok").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    $("tab-btn-modal").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+
     if(currentTab==="penjualan"){
         renderPenjualan();
         $("table-penjualan").classList.remove("hidden");
-        $("table-modal").classList.add("hidden");
         $("tab-btn-penjualan").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
-        $("tab-btn-modal").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
+    } else if(currentTab==="stok"){
+        renderStokHarian();
+        $("table-stok").classList.remove("hidden");
+        $("tab-btn-stok").className = "px-5 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold";
     } else {
         renderModal();
-        $("table-penjualan").classList.add("hidden");
         $("table-modal").classList.remove("hidden");
-        $("tab-btn-penjualan").className = "px-5 py-2 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-bold hover:bg-gray-50";
         $("tab-btn-modal").className = "px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-bold";
     }
 }
 
 window.switchReportTab = t => { currentTab = t; render(); };
-
 $("btn-filter").addEventListener("click", render);
 
 $("btn-export").addEventListener("click", () => {
-    const { ft, fm } = getFiltered();
     let csv = "Coffee Hawa - Report\n";
     if(currentTab==="penjualan"){
+        const ft = getFilteredTransaksi();
         csv += "Tanggal,Cabang,Item,Qty,Penjualan,Modal,Untung\n";
         ft.forEach(t => { const items=(t.items||[]).map(i=>i.nama).join("; "); const qty=(t.items||[]).reduce((a,i)=>a+(i.qty||0),0); csv+=`${t.tanggal},${t.cabang},"${items}",${qty},${t.totalPenjualan||0},${t.totalModal||0},${(t.totalPenjualan||0)-(t.totalModal||0)}\n`; });
+    } else if(currentTab==="stok"){
+        const fs = getFilteredStok();
+        csv += "Tanggal,Cabang,Produk,Stok Awal,Terjual,Sisa,Tidak Laku\n";
+        fs.forEach(s => { csv+=`${s.tanggal},${s.cabang},${s.nama},${s.stokAwal||0},${s.terjual||0},${s.sisa||0},${(s.sisa||0)>0?(s.sisa||0):0}\n`; });
     } else {
+        const fm = getFilteredModal();
         csv += "Tanggal,Cabang,Jenis,Jumlah,Keterangan\n";
         fm.forEach(m => csv+=`${m.tanggal},${m.cabang},${m.jenis},${m.jumlah||0},"${m.keterangan||""}"\n`);
     }
@@ -156,21 +221,24 @@ $("btn-export").addEventListener("click", () => {
 });
 
 window.hapusTransaksi = async (id) => {
-    if(!confirm("Yakin hapus transaksi ini? Stok produk akan dikembalikan.")) return;
+    if(!confirm("Yakin hapus transaksi ini? Stok harian akan dikembalikan.")) return;
     try {
         const t = allTransaksi.find(x => x.id === id);
         if(t && t.items){
             for(const it of t.items){
-                const pRef = doc(db, "produk", it.produkId);
-                const pSnap = await getDoc(pRef);
-                if(pSnap.exists()){
-                    const data = pSnap.data();
-                    await updateDoc(pRef, { stok: (data.stok||0) + (it.qty||0) });
+                if(it.stokDocId){
+                    const stokRef = doc(db, "stokHarian", it.stokDocId);
+                    const stokSnap = await getDoc(stokRef);
+                    if(stokSnap.exists()){
+                        const data = stokSnap.data();
+                        const newTerjual = Math.max(0, (data.terjual||0) - (it.qty||0));
+                        await updateDoc(stokRef, { terjual: newTerjual, sisa: (data.stokAwal||0) - newTerjual });
+                    }
                 }
             }
         }
         await deleteDoc(doc(db,"transaksi",id));
-        alert("✅ Transaksi dihapus & stok dikembalikan.");
+        alert("✅ Transaksi dihapus & stok harian dikembalikan.");
     } catch(err){ alert("❌ Gagal hapus: "+err.message); }
 };
 
@@ -186,8 +254,8 @@ onSnapshot(query(collection(db,"transaksi"), orderBy("createdAt","desc")), s => 
 onSnapshot(query(collection(db,"modal"), orderBy("createdAt","desc")), s => {
     allModal = s.docs.map(d => ({id:d.id,...d.data()})); render();
 });
-onSnapshot(collection(db,"produk"), s => {
-    allProduk = s.docs.map(d => ({id:d.id,...d.data()}));
+onSnapshot(collection(db,"stokHarian"), s => {
+    allStokHarian = s.docs.map(d => ({id:d.id,...d.data()})); render();
 });
 onSnapshot(collection(db,"cabang"), s => {
     cabangs = s.docs.map(d => ({id:d.id,...d.data()}));
@@ -218,8 +286,8 @@ $("filter-sampai").value = today;
 
 <main class="max-w-7xl mx-auto px-4 py-8">
     <div class="mb-6">
-        <h2 class="text-2xl font-bold text-amber-900">Report Penjualan & Modal</h2>
-        <p class="text-gray-600 text-sm">Filter, hapus, dan export laporan transaksi</p>
+        <h2 class="text-2xl font-bold text-amber-900">Report Penjualan, Stok & Modal</h2>
+        <p class="text-gray-600 text-sm">Filter, hapus, dan export laporan</p>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
@@ -243,9 +311,11 @@ $("filter-sampai").value = today;
 
     <div class="flex gap-2 mb-4">
         <button id="tab-btn-penjualan" onclick="switchReportTab('penjualan')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-chart-bar mr-1"></i> Penjualan</button>
-        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-box mr-1"></i> Modal</button>
+        <button id="tab-btn-stok" onclick="switchReportTab('stok')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-boxes mr-1"></i> Stok Harian</button>
+        <button id="tab-btn-modal" onclick="switchReportTab('modal')" class="px-5 py-2 rounded-lg text-sm font-bold"><i class="fas fa-wallet mr-1"></i> Modal</button>
     </div>
 
+    <!-- Tabel Penjualan -->
     <div id="table-penjualan" class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -265,6 +335,26 @@ $("filter-sampai").value = today;
         </div>
     </div>
 
+    <!-- Tabel Stok Harian -->
+    <div id="table-stok" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="bg-green-100">
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Tanggal</th>
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Cabang</th>
+                    <th class="px-4 py-3 text-left font-bold text-green-900">Produk</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Stok Awal</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Terjual</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Sisa</th>
+                    <th class="px-4 py-3 text-center font-bold text-green-900">Tidak Laku</th>
+                </tr></thead>
+                <tbody id="tbody-stok"></tbody>
+                <tfoot id="tfoot-stok"></tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tabel Modal -->
     <div id="table-modal" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
