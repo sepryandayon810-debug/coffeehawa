@@ -28,24 +28,42 @@ let transaksiData = [], modalData = [], cabangList = [];
 const fmt = n => "Rp " + (n||0).toLocaleString("id-ID");
 
 function hitungOmzet() {
-    const pc = {}, tot = { penjualan:0, modal:0, untung:0 };
-    cabangList.forEach(c => pc[c.nama] = { penjualan:0, modal:0, untung:0, transaksi:0 });
+    const pc = {}, tot = {
+        penjualan: 0,
+        modalBarang: 0,
+        pengeluaran: 0,
+        totalBeban: 0,
+        untung: 0
+    };
+    cabangList.forEach(c => pc[c.nama] = {
+        penjualan: 0,
+        modalBarang: 0,
+        pengeluaran: 0,
+        totalBeban: 0,
+        untung: 0,
+        transaksi: 0
+    });
     transaksiData.forEach(t => {
         const c = t.cabang || "Tidak diketahui";
-        if(!pc[c]) pc[c] = { penjualan:0, modal:0, untung:0, transaksi:0 };
+        if(!pc[c]) pc[c] = { penjualan:0, modalBarang:0, pengeluaran:0, totalBeban:0, untung:0, transaksi:0 };
         pc[c].penjualan += t.totalPenjualan||0;
-        pc[c].modal += t.totalModal||0;
-        pc[c].untung += (t.totalPenjualan - t.totalModal)||0;
+        pc[c].modalBarang += t.totalModal||0;
         pc[c].transaksi += 1;
-        tot.penjualan += t.totalPenjualan||0; tot.modal += t.totalModal||0;
+        tot.penjualan += t.totalPenjualan||0;
+        tot.modalBarang += t.totalModal||0;
     });
     modalData.forEach(m => {
         const c = m.cabang || "Tidak diketahui";
-        if(!pc[c]) pc[c] = { penjualan:0, modal:0, untung:0, transaksi:0 };
-        pc[c].modal += m.jumlah||0; tot.modal += m.jumlah||0;
+        if(!pc[c]) pc[c] = { penjualan:0, modalBarang:0, pengeluaran:0, totalBeban:0, untung:0, transaksi:0 };
+        pc[c].pengeluaran += m.jumlah||0;
+        tot.pengeluaran += m.jumlah||0;
     });
-    Object.keys(pc).forEach(k => pc[k].untung = pc[k].penjualan - pc[k].modal);
-    tot.untung = tot.penjualan - tot.modal;
+    Object.keys(pc).forEach(k => {
+        pc[k].totalBeban = pc[k].modalBarang + pc[k].pengeluaran;
+        pc[k].untung = pc[k].penjualan - pc[k].totalBeban;
+    });
+    tot.totalBeban = tot.modalBarang + tot.pengeluaran;
+    tot.untung = tot.penjualan - tot.totalBeban;
     return { pc, tot };
 }
 
@@ -60,7 +78,8 @@ function renderChart(pc) {
             labels,
             datasets: [
                 { label:"Penjualan", data: labels.map(l=>pc[l].penjualan), backgroundColor:"#d97706", borderRadius:4 },
-                { label:"Modal", data: labels.map(l=>pc[l].modal), backgroundColor:"#ef4444", borderRadius:4 },
+                { label:"Modal Barang Terjual", data: labels.map(l=>pc[l].modalBarang), backgroundColor:"#f97316", borderRadius:4 },
+                { label:"Pengeluaran Bahan", data: labels.map(l=>pc[l].pengeluaran), backgroundColor:"#ef4444", borderRadius:4 },
                 { label:"Untung", data: labels.map(l=>pc[l].untung), backgroundColor:"#10b981", borderRadius:4 }
             ]
         },
@@ -71,7 +90,8 @@ function renderChart(pc) {
 function render() {
     const { pc, tot } = hitungOmzet();
     document.getElementById("total-penjualan").textContent = fmt(tot.penjualan);
-    document.getElementById("total-modal").textContent = fmt(tot.modal);
+    document.getElementById("total-modal-barang").textContent = fmt(tot.modalBarang);
+    document.getElementById("total-pengeluaran").textContent = fmt(tot.pengeluaran);
     document.getElementById("total-untung").textContent = fmt(tot.untung);
     document.getElementById("total-transaksi").textContent = transaksiData.length;
     const container = document.getElementById("cabang-cards");
@@ -88,7 +108,8 @@ function render() {
             </div>
             <div class="space-y-2">
                 <div class="flex justify-between text-sm"><span class="text-gray-500">Penjualan</span><span class="font-semibold text-green-600">${fmt(d.penjualan)}</span></div>
-                <div class="flex justify-between text-sm"><span class="text-gray-500">Modal</span><span class="font-semibold text-red-500">${fmt(d.modal)}</span></div>
+                <div class="flex justify-between text-sm"><span class="text-gray-500">Modal barang terjual</span><span class="font-semibold text-orange-500">${fmt(d.modalBarang)}</span></div>
+                <div class="flex justify-between text-sm"><span class="text-gray-500">Pengeluaran bahan</span><span class="font-semibold text-red-500">${fmt(d.pengeluaran)}</span></div>
                 <div class="border-t pt-2 flex justify-between text-sm"><span class="text-gray-600 font-medium">Untung Bersih</span><span class="font-bold ${d.untung>=0?"text-amber-700":"text-red-600"}">${fmt(d.untung)}</span></div>
             </div>`;
         container.appendChild(div);
@@ -119,15 +140,23 @@ onSnapshot(collection(db,"cabang"), s=>{ cabangList=s.docs.map(d=>({id:d.id,...d
     <div class="mb-8">
         <h2 class="text-2xl font-bold text-amber-900">Dashboard Omzet</h2>
         <p class="text-gray-600 text-sm">Ringkasan penjualan seluruh cabang Coffee Hawa — update realtime</p>
+        <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <i class="fas fa-info-circle mr-1"></i>
+            <strong>Catatan:</strong> Modal barang terjual dan pengeluaran pembelian bahan ditampilkan terpisah agar laba bersih lebih akurat.
+        </div>
     </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-600">
             <p class="text-gray-500 text-xs uppercase tracking-wide">Total Penjualan</p>
             <p class="text-2xl font-bold text-amber-700 mt-1" id="total-penjualan">Rp 0</p>
         </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-orange-500">
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Modal Barang Terjual</p>
+            <p class="text-2xl font-bold text-orange-600 mt-1" id="total-modal-barang">Rp 0</p>
+        </div>
         <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-red-500">
-            <p class="text-gray-500 text-xs uppercase tracking-wide">Total Modal</p>
-            <p class="text-2xl font-bold text-red-600 mt-1" id="total-modal">Rp 0</p>
+            <p class="text-gray-500 text-xs uppercase tracking-wide">Pengeluaran Bahan</p>
+            <p class="text-2xl font-bold text-red-600 mt-1" id="total-pengeluaran">Rp 0</p>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-500">
             <p class="text-gray-500 text-xs uppercase tracking-wide">Untung Bersih</p>
